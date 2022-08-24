@@ -156,10 +156,12 @@ void readByte()
       OBISHandlers[iHandler].Handler();
     }
   }
+#ifdef SML_DEBUG
   if (currentState == SML_UNEXPECTED)
   {
     Serial.print(F(">>> Unexpected byte!\n"));
   }
+#endif
   if (currentState == SML_FINAL)
   {
 
