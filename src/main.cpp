@@ -3,8 +3,9 @@
 #include <U8g2lib.h>
 #include "sml.h"
 
-#define rxPin 36
+#define PIN_RX 36
 #define MAX_STR_MANUF 5
+#define PIN_LED BUILTIN_LED
 
 SoftwareSerial IRSerial;
 // SoftwareSerial IRSerial(D7 /* RX */, D8 /* TX */);
@@ -12,13 +13,14 @@ U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/15, /* data=*/4, /* reset=*/16
 
 sml_states_t currentState;
 unsigned char currentChar = 0;
-unsigned long counter = 0, transmitted = 0; //, lastSuccessOrClear = 0;
+unsigned long counter = 0, transmitted = 0, lastLED = 0;
 char buffer[50];
 char statusMsg[30] = "Unknown";
 char floatBuffer[20];
 double activePosEnergyTotal = -2, activeNegEnergyTotal = -2, sumActivePower = -2, sumActivePowerL1 = -2, sumActivePowerL2 = -2, sumActivePowerL3 = -2;
 double activePosEnergyTotalSend = -2, activeNegEnergyTotalSend = -2, sumActivePowerSend = -2, sumActivePowerL1Send = -2, sumActivePowerL2Send = -2, sumActivePowerL3Send = -2;
 unsigned char manuf[MAX_STR_MANUF];
+bool ledState = false;
 
 typedef struct
 {
@@ -116,18 +118,27 @@ void setup()
   u8x8.drawString(0, 1, "SML to LoraWAN");
   u8x8.drawString(0, 2, "Waiting");
 
+  pinMode(PIN_LED, OUTPUT);
+
   // // LMIC init
   // os_init();
 
   // // Reset the MAC state. Session and pending data transfers will be discarded.
   // LMIC_reset();
 
-  pinMode(rxPin, INPUT);
-  IRSerial.begin(9600, SWSERIAL_8N1, rxPin, -1, false, 0, 95);
+  pinMode(PIN_RX, INPUT);
+  IRSerial.begin(9600, SWSERIAL_8N1, PIN_RX, -1, false, 0, 95);
   IRSerial.enableRx(true);
   IRSerial.enableTx(false);
 
   // do_send(&sendjob);
+}
+
+void setStatusLED(bool on)
+{
+  digitalWrite(PIN_LED, on ? HIGH : LOW);
+  ledState = on;
+  lastLED = millis();
 }
 
 void readByte()
@@ -165,6 +176,8 @@ void readByte()
   if (currentState == SML_FINAL)
   {
 
+    setStatusLED(true);
+
     activePosEnergyTotalSend = activePosEnergyTotal;
     activeNegEnergyTotalSend = activeNegEnergyTotal;
     sumActivePowerSend = sumActivePower;
@@ -175,12 +188,12 @@ void readByte()
     updateDisplay();
 
     printf(">>> FINAL! Checksum OK. Counter %05lu.\n", counter);
-    printf(">>> A+ total:                     %.3f kWh\n", activePosEnergyTotalSend);
-    printf(">>> A- total:                     %.3f kWh\n", activeNegEnergyTotalSend);
-    printf(">>> Active power (A+ - A-):       %.3f kWh\n", sumActivePowerSend);
-    printf(">>> Active power (A+ - A-) in L1: %.3f kWh\n", sumActivePowerL1Send);
-    printf(">>> Active power (A+ - A-) in L2: %.3f kWh\n", sumActivePowerL2Send);
-    printf(">>> Active power (A+ - A-) in L3: %.3f kWh\n\n", sumActivePowerL3Send);
+    printf(">>> A+ total:                     %.3f kW\n", activePosEnergyTotalSend);
+    printf(">>> A- total:                     %.3f kW\n", activeNegEnergyTotalSend);
+    printf(">>> Active power (A+ - A-):       %.3f W\n", sumActivePowerSend);
+    printf(">>> Active power (A+ - A-) in L1: %.3f W\n", sumActivePowerL1Send);
+    printf(">>> Active power (A+ - A-) in L2: %.3f W\n", sumActivePowerL2Send);
+    printf(">>> Active power (A+ - A-) in L3: %.3f W\n\n", sumActivePowerL3Send);
 
     counter++;
   }
@@ -194,5 +207,10 @@ void loop()
     currentChar = IRSerial.read();
     // Serial.printf("%02X", currentChar);
     readByte();
+  }
+
+  if (ledState && millis() - lastLED > 200)
+  {
+    setStatusLED(false);
   }
 }
