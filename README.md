@@ -56,3 +56,5 @@ function readInt(array, start, size = 8) {
 - [Smartmeter D0, SML](https://www.msxfaq.de/sonst/bastelbude/smartmeter_d0_sml.htm)
 - [Smart Message Language — Stromzähler auslesen – Die Schatenseite](https://www.schatenseite.de/2016/05/30/smart-message-language-stromzahler-auslesen)
 - [Volkszähler TTL Schreib- Lesekopf für Digitale Stromzähler](https://forum.iobroker.net/post/386478)
+- [BSI - Bundesamt für Sicherheit in der Informationstechnik - BSI TR-03109-1 Anlage IVb: Feinspezifikation "Drahtgebundene LMN-Schnittstelle" Teil b: "SML – Smart Message Language"](https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Publikationen/TechnischeRichtlinien/TR03109/TR-03109-1_Anlage_Feinspezifikation_Drahtgebundene_LMN-Schnittstelle_Teilb.html)
+- [SML-Interface](https://www.stefan-weigert.de/php_loader/sml.php)
