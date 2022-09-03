@@ -31,6 +31,11 @@
 // SML_Parser
 #define MAX_STR_MANUF 5
 
+#define DEFAULT_STATUS_MSG "Unknown"
+#define DISPLAY_UPDATE_INTERVAL 1000
+#define SML_DISPLAY_TIMEOUT 5000
+#define TX_INTERVAL 1000 * 60 // Schedule TX every this many (milli)seconds
+
 // ++++++++++++++++++++++++++++++++++++++++
 //
 // LIBS
@@ -55,19 +60,18 @@ const lmic_pinmap lmic_pins = {
     .dio = {LORA_DIO0, LORA_DIO1, LORA_DIO2},
 };
 
-// Schedule TX every this many seconds
-const unsigned TX_INTERVAL = 60;
-
 sml_states_t currentState;
 unsigned char currentChar = 0;
-unsigned long counter = 0, transmitted = 0, lastLED = 0, prepareCount = 0;
+unsigned long counter = 0, transmitted = 0, lastLED = 0, lmicTxPrevMillis = 0, lastSMLsuccess = 0, lastDisplayUpdate = 0;
 char buffer[50];
-char statusMsg[30] = "Unknown";
+char statusMsg[30] = DEFAULT_STATUS_MSG;
+char statusMsgPrev[30];
 char floatBuffer[20];
 double activePosEnergyTotal = -2, activeNegEnergyTotal = -2, sumActivePower = -2, sumActivePowerL1 = -2, sumActivePowerL2 = -2, sumActivePowerL3 = -2;
 double activePosEnergyTotalSend = -2, activeNegEnergyTotalSend = -2, sumActivePowerSend = -2, sumActivePowerL1Send = -2, sumActivePowerL2Send = -2, sumActivePowerL3Send = -2;
 unsigned char manuf[MAX_STR_MANUF];
 bool ledState = false;
+bool lmicIsIdle = true;
 
 typedef struct
 {
@@ -149,24 +153,35 @@ void printHex(byte buffer[], size_t arraySize)
 
 void updateDisplay()
 {
-  u8x8.drawString(0, 2, "                                 ");
-  u8x8.drawString(0, 2, statusMsg);
+  if (lmicIsIdle)
+  {
+    sprintf(statusMsg, "%s TX in %lus", (transmitted == 0 ? "First" : "Next"), ((lmicTxPrevMillis + TX_INTERVAL - millis()) / 1000));
+  }
 
-  dtostrf(counter, 11, 0, floatBuffer);
-  sprintf(buffer, "Msg: %s", floatBuffer);
+  if (strcmp(statusMsgPrev, statusMsg) != 0)
+  {
+    sprintf(buffer, ">%-15s", statusMsg);
+    u8x8.drawString(0, 2, buffer);
+    strcpy(statusMsgPrev, statusMsg);
+  }
+
+  dtostrf(transmitted, 7, 0, floatBuffer);
+  sprintf(buffer, "LoRa TX: %s", floatBuffer);
   u8x8.drawString(0, 3, buffer);
 
-  dtostrf(activePosEnergyTotal, 11, 2, floatBuffer);
-  sprintf(buffer, "Sum: %s", floatBuffer);
+  dtostrf(counter, 8, 0, floatBuffer);
+  sprintf(buffer, "SML RX: %s", floatBuffer);
   u8x8.drawString(0, 4, buffer);
 
-  dtostrf(sumActivePower, 10, 2, floatBuffer);
-  sprintf(buffer, "Watt: %s", floatBuffer);
+  dtostrf(activePosEnergyTotalSend, 11, 2, floatBuffer);
+  sprintf(buffer, "Sum: %s", floatBuffer);
   u8x8.drawString(0, 5, buffer);
 
-  dtostrf(transmitted, 11, 0, floatBuffer);
-  sprintf(buffer, "Tns: %s", floatBuffer);
+  dtostrf(sumActivePowerSend, 10, 2, floatBuffer);
+  sprintf(buffer, "Watt: %s", floatBuffer);
   u8x8.drawString(0, 6, buffer);
+
+  lastDisplayUpdate = millis();
 }
 
 void toByteArray(long long val, byte *byteArray, int startIndex, int length)
@@ -195,7 +210,7 @@ void do_send(osjob_t *j)
   }
   else
   {
-    Serial.printf("Prepare LoRa package #%lu\n", counter);
+    Serial.printf("Prepare LoRa package #%lu\n", transmitted + 1);
     // Version                        1 byte
     // A+                             8 byte
     // A-                             8 byte
@@ -227,6 +242,7 @@ void do_send(osjob_t *j)
 
 void onEvent(ev_t ev)
 {
+  lmicIsIdle = false;
   Serial.print("LMIC Event: ");
   switch (ev)
   {
@@ -271,8 +287,8 @@ void onEvent(ev_t ev)
     // size, we don't use it in this example.
     LMIC_setLinkCheckMode(0);
 
-    // Start first transmission after join
-    do_send(&sendjob);
+    lmicIsIdle = true;
+
     break;
   /*
   || This event is defined but not used in the code. No
@@ -288,7 +304,7 @@ void onEvent(ev_t ev)
     break;
   case EV_REJOIN_FAILED:
     Serial.println(F("EV_REJOIN_FAILED"));
-    sprintf(statusMsg, "rejoin failed");
+    sprintf(statusMsg, "Rejoin failed");
     break;
   case EV_TXCOMPLETE:
     Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
@@ -300,12 +316,13 @@ void onEvent(ev_t ev)
       Serial.print(LMIC.dataLen);
       Serial.println(F(" bytes of payload"));
     }
-    // Schedule next transmission
-    os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL),
-                        do_send);
+
     transmitted++;
     sprintf(statusMsg, "TX complete");
     updateDisplay();
+    lmicIsIdle = true;
+
+    lmicTxPrevMillis = millis();
     break;
   case EV_LOST_TSYNC:
     sprintf(statusMsg, "Lost sync");
@@ -415,7 +432,7 @@ void readByte()
 
     updateDisplay();
 
-    printf("SML Decoded! Checksum OK (#%lu)\n", ++prepareCount);
+    printf("SML Decoded! Checksum OK (#%lu)\n", ++counter);
     printf("> A+ total:                     %.3f kW\n", activePosEnergyTotalSend);
     printf("> A- total:                     %.3f kW\n", activeNegEnergyTotalSend);
     printf("> Active power (A+ - A-):       %.3f W\n", sumActivePowerSend);
@@ -423,19 +440,19 @@ void readByte()
     printf("> Active power (A+ - A-) in L2: %.3f W\n", sumActivePowerL2Send);
     printf("> Active power (A+ - A-) in L3: %.3f W\n\n", sumActivePowerL3Send);
 
-    counter++;
+    lastSMLsuccess = millis();
   }
 }
 
 void setup()
 {
   Serial.begin(115200);
-  Serial.printf("\n= Starting LoRaSmartMeter v%d.%d =\n\n", VERSION_MAJOR, VERSION_MINOR);
+  Serial.printf("\n == Starting LoRaSmartMeter v%d.%d ==\n\n", VERSION_MAJOR, VERSION_MINOR);
 
   u8x8.begin();
   u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.drawString(0, 1, "LoRaSmartMeter");
-  u8x8.drawString(0, 2, "Waiting...");
+  u8x8.drawString(0, 1, "=LoRaSmartMeter=");
+  u8x8.drawString(0, 4, "   Booting...   ");
 
   pinMode(PIN_LED, OUTPUT);
 
@@ -468,5 +485,21 @@ void loop()
   if (ledState && millis() - lastLED > 200)
   {
     setStatusLED(false);
+  }
+
+  if (lmicIsIdle && (millis() - lmicTxPrevMillis) >= TX_INTERVAL)
+  {
+    lmicIsIdle = false;
+    do_send(&sendjob);
+  }
+
+  // When we have more then SML_DISPLAY_TIMEOUT seconds without
+  // a successful decoded SML, we update the display manually
+  if (millis() - lastSMLsuccess >= SML_DISPLAY_TIMEOUT)
+  {
+    if (millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
+    {
+      updateDisplay();
+    }
   }
 }
