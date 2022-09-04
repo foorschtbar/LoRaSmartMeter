@@ -1,5 +1,15 @@
 # LoRaSmartMeter
 
+WIP...
+
+## Flags
+
+| Build Flag  | function                                                        |
+| ----------- | --------------------------------------------------------------- |
+| `LORA_OFF`  | Disable LoRa function                                           |
+| `FAKE_SML`  | Parse a static test SML-Message every second and turns LoRa off |
+| `SML_DEBUG` | Turn debug messages from SML parser lib on                      |
+
 ## Payload Decoder
 
 ```javascript

@@ -6,6 +6,15 @@
 #include <sml.h>
 #include <keys.h>
 
+#ifdef FAKE_SML
+#ifndef LORA_OFF
+#define LORA_OFF
+#endif
+#include <testdata.h>
+unsigned int testdata_pos = 0;
+unsigned long lastTestMillis = 0;
+#endif
+
 // ++++++++++++++++++++++++++++++++++++++++
 //
 // CONSTANTS
@@ -456,11 +465,13 @@ void setup()
 
   pinMode(PIN_LED, OUTPUT);
 
+#ifndef LORA_OFF
   // // LMIC init
   os_init();
 
   // // Reset the MAC state. Session and pending data transfers will be discarded.
   LMIC_reset();
+#endif
 
   // Software serial setup
   pinMode(PIN_RX, INPUT);
@@ -468,19 +479,38 @@ void setup()
   IRSerial.enableRx(true);
   IRSerial.enableTx(false);
 
+#ifndef LORA_OFF
   // Start joining...
   LMIC_startJoining();
+#endif
 }
 
 void loop()
 {
+#ifndef LORA_OFF
   os_runloop_once();
+#endif
+
+#ifdef FAKE_SML
+  if (lastTestMillis == 0 || millis() - lastTestMillis > 1000)
+  {
+    currentChar = testdata[testdata_pos];
+    testdata_pos++;
+    if (testdata_pos == testdata_len)
+    {
+      testdata_pos = 0;
+      lastTestMillis = millis();
+    }
+    readByte();
+  }
+#else
   if (IRSerial.available())
   {
     currentChar = IRSerial.read();
     // Serial.printf("%02X", currentChar);
     readByte();
   }
+#endif
 
   if (ledState && millis() - lastLED > 200)
   {
@@ -490,7 +520,9 @@ void loop()
   if (lmicIsIdle && (millis() - lmicTxPrevMillis) >= TX_INTERVAL)
   {
     lmicIsIdle = false;
+#ifndef LORA_OFF
     do_send(&sendjob);
+#endif
   }
 
   // When we have more then SML_DISPLAY_TIMEOUT seconds without
