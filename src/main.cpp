@@ -76,8 +76,8 @@ char buffer[50];
 char statusMsg[30] = DEFAULT_STATUS_MSG;
 char statusMsgPrev[30];
 char floatBuffer[20];
-double activePosEnergyTotal = -2, activeNegEnergyTotal = -2, sumActivePower = -2, sumActivePowerL1 = -2, sumActivePowerL2 = -2, sumActivePowerL3 = -2;
-double activePosEnergyTotalSend = -2, activeNegEnergyTotalSend = -2, sumActivePowerSend = -2, sumActivePowerL1Send = -2, sumActivePowerL2Send = -2, sumActivePowerL3Send = -2;
+double voltL1 = -2, voltL2 = -2, voltL3 = -2, activePosEnergyTotal = -2, activeNegEnergyTotal = -2, sumActivePower = -2, sumActivePowerL1 = -2, sumActivePowerL2 = -2, sumActivePowerL3 = -2;
+double voltL1Send = -2, voltL2Send = -2, voltL3Send = -2, activePosEnergyTotalSend = -2, activeNegEnergyTotalSend = -2, sumActivePowerSend = -2, sumActivePowerL1Send = -2, sumActivePowerL2Send = -2, sumActivePowerL3Send = -2;
 unsigned char manuf[MAX_STR_MANUF];
 bool ledState = false;
 bool lmicIsIdle = true;
@@ -133,6 +133,21 @@ void SumActivePowerL3()
   smlOBISW(sumActivePowerL3);
 }
 
+void VoltageL1()
+{
+  smlOBISVolt(voltL1);
+}
+
+void VoltageL2()
+{
+  smlOBISVolt(voltL2);
+}
+
+void VoltageL3()
+{
+  smlOBISVolt(voltL3);
+}
+
 OBISHandler OBISHandlers[] = {
     {{0x81, 0x81, 0xc7, 0x82, 0x03, 0xff}, &Manufacturer},         // 8181c78203ff (129-129:199.130.3*255)
     {{0x01, 0x00, 0x01, 0x08, 0x00, 0xff}, &ActivePosEnergyTotal}, // 0100010800ff (1-0:1.8.0*255) (Positive active energy (A+) total [kWh])
@@ -141,6 +156,9 @@ OBISHandler OBISHandlers[] = {
     {{0x01, 0x00, 0x24, 0x07, 0x00, 0xff}, &SumActivePowerL1},     // 0100240700ff (1-0:36.7.0*255) (Sum active instantaneous power (A+ - A-) in phase L1 [kW])
     {{0x01, 0x00, 0x38, 0x07, 0x00, 0xff}, &SumActivePowerL2},     // 0100380700ff (1-0:56.7.0*255) (Sum active instantaneous power (A+ - A-) in phase L2 [kW])
     {{0x01, 0x00, 0x4c, 0x07, 0x00, 0xff}, &SumActivePowerL3},     // 01004c0700ff (1-0:76.7.0*255) (Sum active instantaneous power (A+ - A-) in phase L3 [kW])
+    {{0x01, 0x00, 0x20, 0x07, 0x00, 0xff}, &VoltageL1},            // 0100200700ff (1-0:32.7.0*255)) (Instantaneous voltage in phase I)
+    {{0x01, 0x00, 0x34, 0x07, 0x00, 0xff}, &VoltageL2},            // 0100340700ff (1-0:52.7.0*255) (Instantaneous voltage in phase II)
+    {{0x01, 0x00, 0x48, 0x07, 0x00, 0xff}, &VoltageL3},            // 0100480700ff (1-0:72.7.0*255) (Instantaneous voltage in phase III)
     {{0}, 0}};
 
 void printHex(byte buffer[], size_t arraySize)
@@ -408,6 +426,9 @@ void readByte()
     sumActivePowerL1 = -3;
     sumActivePowerL2 = -3;
     sumActivePowerL3 = -3;
+    voltL1 = -3;
+    voltL2 = -3;
+    voltL3 = -3;
   }
   if (currentState == SML_LISTEND)
   {
@@ -438,16 +459,23 @@ void readByte()
     sumActivePowerL1Send = sumActivePowerL1;
     sumActivePowerL2Send = sumActivePowerL2;
     sumActivePowerL3Send = sumActivePowerL3;
+    voltL1Send = voltL1;
+    voltL2Send = voltL2;
+    voltL3Send = voltL3;
 
     updateDisplay();
 
     printf("SML Decoded! Checksum OK (#%lu)\n", ++counter);
-    printf("> A+ total:                     %.3f kW\n", activePosEnergyTotalSend);
-    printf("> A- total:                     %.3f kW\n", activeNegEnergyTotalSend);
+    printf("> A+ total:                     %.3f Wh\n", activePosEnergyTotalSend);
+    printf("> A- total:                     %.3f Wh\n", activeNegEnergyTotalSend);
     printf("> Active power (A+ - A-):       %.3f W\n", sumActivePowerSend);
     printf("> Active power (A+ - A-) in L1: %.3f W\n", sumActivePowerL1Send);
     printf("> Active power (A+ - A-) in L2: %.3f W\n", sumActivePowerL2Send);
-    printf("> Active power (A+ - A-) in L3: %.3f W\n\n", sumActivePowerL3Send);
+    printf("> Active power (A+ - A-) in L3: %.3f W\n", sumActivePowerL3Send);
+    printf("> Voltage L1:                   %.1f V\n", voltL1Send);
+    printf("> Voltage L2:                   %.1f V\n", voltL2Send);
+    printf("> Voltage L3:                   %.1f V\n", voltL3Send);
+    printf("\n");
 
     lastSMLsuccess = millis();
   }
