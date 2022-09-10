@@ -16,23 +16,29 @@ WIP...
 function decodeUplink(input) {
   var bytes = input.bytes;
 
-  var fwVersion = (bytes[0] >> 4) + "." + (bytes[0] & 0xf); // Firmware version
+  var version = (bytes[0] >> 4) + "." + (bytes[0] & 0xf); // Firmware version
   var activePosEnergyTotal = readInt(bytes, 1);
   var activeNegEnergyTotal = readInt(bytes, 9);
-  var sumActivePower = readInt(bytes, 17);
-  var sumActivePowerL1 = readInt(bytes, 25);
-  var sumActivePowerL2 = readInt(bytes, 33);
-  var sumActivePowerL3 = readInt(bytes, 41);
+  var sumActivePower = readInt(bytes, 17, 4);
+  var sumActivePowerL1 = readInt(bytes, 21, 4);
+  var sumActivePowerL2 = readInt(bytes, 25, 4);
+  var sumActivePowerL3 = readInt(bytes, 29, 4);
+  var voltageL1 = readInt(bytes, 33, 4); 
+  var voltageL2 = readInt(bytes, 37, 4); 
+  var voltageL3 = readInt(bytes, 41, 4); 
 
   return {
     data: {
-      fwVersion: fwVersion,
+      version: version,
       activePosEnergyTotal: activePosEnergyTotal,
       activeNegEnergyTotal: activeNegEnergyTotal,
       sumActivePower: sumActivePower,
       sumActivePowerL1: sumActivePowerL1,
       sumActivePowerL2: sumActivePowerL2,
       sumActivePowerL3: sumActivePowerL3,
+      voltageL1: voltageL1,
+      voltageL2: voltageL2,
+      voltageL3: voltageL3
     },
     warnings: [],
     errors: [],

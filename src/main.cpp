@@ -5,11 +5,9 @@
 #include <hal/hal.h>
 #include <sml.h>
 #include <keys.h>
+#include <screens.h>
 
 #ifdef FAKE_SML
-#ifndef LORA_OFF
-#define LORA_OFF
-#endif
 #include <testdata.h>
 unsigned int testdata_pos = 0;
 unsigned long lastTestMillis = 0;
@@ -35,24 +33,31 @@ unsigned long lastTestMillis = 0;
 
 // Other pins
 #define PIN_RX 36
-#define PIN_LED BUILTIN_LED
+#define PIN_BUTTON 39
+#define PIN_LED 25 // BUILTIN_LED // 38
 
 // SML_Parser
 #define MAX_STR_MANUF 5
 
 #define DEFAULT_STATUS_MSG "Unknown"
-#define DISPLAY_UPDATE_INTERVAL 1000
-#define SML_DISPLAY_TIMEOUT 5000
 #define TX_INTERVAL 1000 * 60 // Schedule TX every this many (milli)seconds
+
+// SCREEN Stuff
+#define SCREEN_COUNT 3
+#define DISPLAY_UPDATE_INTERVAL 500
+#define DISPLAY_TIMEOUT 1000 * 60 * 5 // time after display will go offs
+#define SML_DISPLAY_TIMEOUT 5000
+#define TIME_BUTTON_LONGPRESS 10000
 
 // ++++++++++++++++++++++++++++++++++++++++
 //
-// LIBS
+// OBJECTS
 //
 // ++++++++++++++++++++++++++++++++++++++++
 
 SoftwareSerial IRSerial;
-U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(OLED_SCL, OLED_SDA, OLED_RST);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/OLED_RST, /* clock=*/OLED_SCL, /* data=*/OLED_SDA);
+Screens screen(u8g2, "LoRaSmartMeter", SCREEN_COUNT, DISPLAY_UPDATE_INTERVAL, DISPLAY_TIMEOUT);
 
 // ++++++++++++++++++++++++++++++++++++++++
 //
@@ -71,7 +76,8 @@ const lmic_pinmap lmic_pins = {
 
 sml_states_t currentState;
 unsigned char currentChar = 0;
-unsigned long counter = 0, transmitted = 0, lastLED = 0, lmicTxPrevMillis = 0, lastSMLsuccess = 0, lastDisplayUpdate = 0;
+unsigned long counter = 0, LoRaTransmitted = 0, LoRaReceived = 0, lastLED = 0, lmicTxPrevMillis = 0, lastSMLsuccess = 0, lastDisplayUpdate = 0, lastButtonTimer = 0;
+bool previousButtonState = HIGH; // will store last Button state. 1 = unpressed, 0 = pressed
 char buffer[50];
 char statusMsg[30] = DEFAULT_STATUS_MSG;
 char statusMsgPrev[30];
@@ -81,6 +87,9 @@ double voltL1Send = -2, voltL2Send = -2, voltL3Send = -2, activePosEnergyTotalSe
 unsigned char manuf[MAX_STR_MANUF];
 bool ledState = false;
 bool lmicIsIdle = true;
+bool isDisplayUnlocked = false;
+int currentScreen = 0;
+bool displayPowerSaving = true;
 
 typedef struct
 {
@@ -156,7 +165,7 @@ OBISHandler OBISHandlers[] = {
     {{0x01, 0x00, 0x24, 0x07, 0x00, 0xff}, &SumActivePowerL1},     // 0100240700ff (1-0:36.7.0*255) (Sum active instantaneous power (A+ - A-) in phase L1 [kW])
     {{0x01, 0x00, 0x38, 0x07, 0x00, 0xff}, &SumActivePowerL2},     // 0100380700ff (1-0:56.7.0*255) (Sum active instantaneous power (A+ - A-) in phase L2 [kW])
     {{0x01, 0x00, 0x4c, 0x07, 0x00, 0xff}, &SumActivePowerL3},     // 01004c0700ff (1-0:76.7.0*255) (Sum active instantaneous power (A+ - A-) in phase L3 [kW])
-    {{0x01, 0x00, 0x20, 0x07, 0x00, 0xff}, &VoltageL1},            // 0100200700ff (1-0:32.7.0*255)) (Instantaneous voltage in phase I)
+    {{0x01, 0x00, 0x20, 0x07, 0x00, 0xff}, &VoltageL1},            // 0100200700ff (1-0:32.7.0*255) (Instantaneous voltage in phase I)
     {{0x01, 0x00, 0x34, 0x07, 0x00, 0xff}, &VoltageL2},            // 0100340700ff (1-0:52.7.0*255) (Instantaneous voltage in phase II)
     {{0x01, 0x00, 0x48, 0x07, 0x00, 0xff}, &VoltageL3},            // 0100480700ff (1-0:72.7.0*255) (Instantaneous voltage in phase III)
     {{0}, 0}};
@@ -178,37 +187,10 @@ void printHex(byte buffer[], size_t arraySize)
   }
 }
 
-void updateDisplay()
+void setStatusMsg(const char *msg)
 {
-  if (lmicIsIdle)
-  {
-    sprintf(statusMsg, "%s TX in %lus", (transmitted == 0 ? "First" : "Next"), ((lmicTxPrevMillis + TX_INTERVAL - millis()) / 1000));
-  }
-
-  if (strcmp(statusMsgPrev, statusMsg) != 0)
-  {
-    sprintf(buffer, ">%-15s", statusMsg);
-    u8x8.drawString(0, 2, buffer);
-    strcpy(statusMsgPrev, statusMsg);
-  }
-
-  dtostrf(transmitted, 7, 0, floatBuffer);
-  sprintf(buffer, "LoRa TX: %s", floatBuffer);
-  u8x8.drawString(0, 3, buffer);
-
-  dtostrf(counter, 8, 0, floatBuffer);
-  sprintf(buffer, "SML RX: %s", floatBuffer);
-  u8x8.drawString(0, 4, buffer);
-
-  dtostrf(activePosEnergyTotalSend, 11, 2, floatBuffer);
-  sprintf(buffer, "Sum: %s", floatBuffer);
-  u8x8.drawString(0, 5, buffer);
-
-  dtostrf(sumActivePowerSend, 10, 2, floatBuffer);
-  sprintf(buffer, "Watt: %s", floatBuffer);
-  u8x8.drawString(0, 6, buffer);
-
-  lastDisplayUpdate = millis();
+  sprintf(statusMsg, msg);
+  screen.dirty();
 }
 
 void toByteArray(long long val, byte *byteArray, int startIndex, int length)
@@ -237,25 +219,31 @@ void do_send(osjob_t *j)
   }
   else
   {
-    Serial.printf("Prepare LoRa package #%lu\n", transmitted + 1);
+    Serial.printf("Prepare LoRa package #%lu\n", LoRaTransmitted + 1);
     // Version                        1 byte
     // A+                             8 byte
     // A-                             8 byte
-    // Active power(A + -A -)         8 byte
-    // Active power(A + -A -) in L1   8 byte
-    // Active power(A + -A -) in L2   8 byte
-    // Active power(A + -A -) in L3   8 byte
+    // Active power(A + -A -)         4 byte
+    // Active power(A + -A -) in L1   4 byte
+    // Active power(A + -A -) in L2   4 byte
+    // Active power(A + -A -) in L3   4 byte
+    // Voltage in L1                  4 byte
+    // Voltage in L2                  4 byte
+    // Voltage in L3                  4 byte
     //                                ------
-    //                                49 byte
+    //                                45 byte
 
-    byte buffer[49];
+    byte buffer[45];
     buffer[0] = (VERSION_MAJOR << 4) | (VERSION_MINOR & 0xf);
     toByteArray((activePosEnergyTotalSend * 1000), buffer, 1, 8);
     toByteArray((activeNegEnergyTotalSend * 1000), buffer, 9, 8);
-    toByteArray((sumActivePowerSend * 1000), buffer, 17, 8);
-    toByteArray((sumActivePowerL1Send * 1000), buffer, 25, 8);
-    toByteArray((sumActivePowerL2Send * 1000), buffer, 33, 8);
-    toByteArray((sumActivePowerL3Send * 1000), buffer, 41, 8);
+    toByteArray((sumActivePowerSend * 1000), buffer, 17, 4);
+    toByteArray((sumActivePowerL1Send * 1000), buffer, 21, 4);
+    toByteArray((sumActivePowerL2Send * 1000), buffer, 25, 4);
+    toByteArray((sumActivePowerL3Send * 1000), buffer, 29, 4);
+    toByteArray((voltL1Send * 1000), buffer, 33, 4);
+    toByteArray((voltL2Send * 1000), buffer, 37, 4);
+    toByteArray((voltL3Send * 1000), buffer, 41, 4);
 
     Serial.printf("> Payload: ");
     printHex(buffer, sizeof(buffer));
@@ -287,6 +275,7 @@ void onEvent(ev_t ev)
     break;
   case EV_JOINING:
     Serial.println(F("EV_JOINING"));
+    setStatusMsg("Joining...");
     break;
   case EV_JOINED:
     Serial.println(F("EV_JOINED"));
@@ -306,8 +295,8 @@ void onEvent(ev_t ev)
       Serial.print("> NwkSKey: ");
       printHex(nwkKey, sizeof(nwkKey));
       Serial.println("\n");
-      sprintf(statusMsg, "Joined");
-      updateDisplay();
+
+      setStatusMsg("Joined");
     }
     // Disable link check validation (automatically enabled
     // during join, but because slow data rates change max TX
@@ -327,11 +316,11 @@ void onEvent(ev_t ev)
   */
   case EV_JOIN_FAILED:
     Serial.println(F("EV_JOIN_FAILED"));
-    sprintf(statusMsg, "Join failed");
+    setStatusMsg("Join failed");
     break;
   case EV_REJOIN_FAILED:
     Serial.println(F("EV_REJOIN_FAILED"));
-    sprintf(statusMsg, "Rejoin failed");
+    setStatusMsg("Rejoin failed");
     break;
   case EV_TXCOMPLETE:
     Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
@@ -339,26 +328,26 @@ void onEvent(ev_t ev)
       Serial.println(F("Received ack"));
     if (LMIC.dataLen)
     {
+      LoRaReceived++;
       Serial.print(F("Received "));
       Serial.print(LMIC.dataLen);
       Serial.println(F(" bytes of payload"));
     }
 
-    transmitted++;
-    sprintf(statusMsg, "TX complete");
-    updateDisplay();
+    LoRaTransmitted++;
+    setStatusMsg("TX complete");
     lmicIsIdle = true;
 
     lmicTxPrevMillis = millis();
     break;
   case EV_LOST_TSYNC:
-    sprintf(statusMsg, "Lost sync");
-    updateDisplay();
+    setStatusMsg("Lost sync");
+
     Serial.println(F("EV_LOST_TSYNC"));
     break;
   case EV_RESET:
-    sprintf(statusMsg, "Reset sync");
-    updateDisplay();
+    setStatusMsg("Reset sync");
+
     Serial.println(F("EV_RESET"));
     break;
   case EV_RXCOMPLETE:
@@ -366,13 +355,13 @@ void onEvent(ev_t ev)
     Serial.println(F("EV_RXCOMPLETE"));
     break;
   case EV_LINK_DEAD:
-    sprintf(statusMsg, "Link dead");
-    updateDisplay();
+    setStatusMsg("Link dead");
+
     Serial.println(F("EV_LINK_DEAD"));
     break;
   case EV_LINK_ALIVE:
-    sprintf(statusMsg, "Link alive");
-    updateDisplay();
+    setStatusMsg("Link alive");
+
     Serial.println(F("EV_LINK_ALIVE"));
     break;
   /*
@@ -384,8 +373,8 @@ void onEvent(ev_t ev)
   ||    break;
   */
   case EV_TXSTART:
-    sprintf(statusMsg, "TX start");
-    updateDisplay();
+    setStatusMsg("TX start");
+
     Serial.println(F("EV_TXSTART"));
     break;
   case EV_TXCANCELED:
@@ -463,7 +452,7 @@ void readByte()
     voltL2Send = voltL2;
     voltL3Send = voltL3;
 
-    updateDisplay();
+    screen.dirty();
 
     printf("SML Decoded! Checksum OK (#%lu)\n", ++counter);
     printf("> A+ total:                     %.3f Wh\n", activePosEnergyTotalSend);
@@ -481,17 +470,123 @@ void readByte()
   }
 }
 
+void handleDisplay()
+{
+
+  if (screen.needRefresh())
+  {
+
+    char buff1[255], buff2[255], buff3[255], buff4[255], buff5[255];
+    signed long nextLoRaTx;
+
+    switch (screen.currentScreen())
+    {
+    case 1:
+      snprintf(buff1, sizeof(buff1), "SML RX %14i", counter);
+
+      // activePosEnergyTotalSend
+      if (activePosEnergyTotalSend > 0)
+      {
+        snprintf(buff2, sizeof(buff2), "A+ %15.3f Wh", activePosEnergyTotalSend);
+      }
+      else
+      {
+        snprintf(buff2, sizeof(buff2), "A+ %18s", "---");
+      }
+
+      // activeNegEnergyTotalSend
+      if (activeNegEnergyTotalSend > 0)
+      {
+        snprintf(buff3, sizeof(buff3), "A- %15.3f Wh", activeNegEnergyTotalSend);
+      }
+      else
+      {
+        snprintf(buff3, sizeof(buff3), "A- %18s", "---");
+      }
+
+      // sumActivePowerSend
+      if (sumActivePowerSend > 0)
+      {
+        snprintf(buff4, sizeof(buff4), "Watt %14.2f W", sumActivePowerSend);
+      }
+      else
+      {
+        snprintf(buff4, sizeof(buff4), "Watt %16s", "---");
+      }
+
+      // Voltages
+      if (sumActivePowerSend > 0)
+      {
+        snprintf(buff5, sizeof(buff5), "Volt %14.2f V", voltL1Send);
+      }
+      else
+      {
+        snprintf(buff5, sizeof(buff5), "Volt %16s", "---");
+      }
+      screen.displayMsg(buff1, buff2, buff3, buff4, buff5);
+      break;
+
+    case 2:
+      snprintf(buff1, sizeof(buff1), "Status %14s", statusMsg);
+      // #ifdef LORA_OFF
+      //       snprintf(buff2, sizeof(buff2), "LoRa turned off!");
+      // #else
+      nextLoRaTx = (TX_INTERVAL - (millis() - lmicTxPrevMillis));
+      snprintf(buff2, sizeof(buff2), "Next TX %12lus", (nextLoRaTx > 0 ? nextLoRaTx / 1000 : 0));
+      // #endif
+      snprintf(buff3, sizeof(buff3), "TX# %17i", LMIC.seqnoUp);
+      snprintf(buff4, sizeof(buff4), "RX# %17i", LMIC.seqnoDn);
+      screen.displayMsg(buff1, buff2, buff3, buff4, "");
+      break;
+
+    case 3:
+      snprintf(buff1, sizeof(buff1), "Firmware v%d.%d", VERSION_MAJOR, VERSION_MINOR);
+      snprintf(buff3, sizeof(buff3), " %s %s", __DATE__, __TIME__);
+      screen.displayMsg(buff1, "Compiled:", buff3, "", "(c) 2022 foorschtbar");
+      break;
+    }
+  }
+}
+
+void handleButton()
+{
+  static bool prevBntState;
+  bool btnState = digitalRead(PIN_BUTTON);
+  if (btnState == LOW) // pressed
+  {
+    if (btnState != prevBntState) // was not pressed and is now pressed
+    {
+      printf("[handleButton] Button pressed short\n");
+
+      lastButtonTimer = millis();
+      screen.nextScreen();
+
+      printf("[handleButton] Current screen: %i\n", screen.currentScreen());
+    }
+
+    if ((millis() - lastButtonTimer >= TIME_BUTTON_LONGPRESS))
+    {
+      printf("[handleButton] Button pressed long\n");
+    }
+
+    // Delay a little bit to avoid bouncing
+    delay(50);
+  }
+  prevBntState = btnState;
+}
+
 void setup()
 {
   Serial.begin(115200);
   Serial.printf("\n == Starting LoRaSmartMeter v%d.%d ==\n\n", VERSION_MAJOR, VERSION_MINOR);
 
-  u8x8.begin();
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.drawString(0, 1, "=LoRaSmartMeter=");
-  u8x8.drawString(0, 4, "   Booting...   ");
+  // Display
+  screen.setup();
+  screen.displayMsgForce("Booting. Please wait...");
+  delay(1000);
 
   pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_BUTTON, INPUT);
 
 #ifndef LORA_OFF
   // // LMIC init
@@ -507,6 +602,8 @@ void setup()
   IRSerial.enableRx(true);
   IRSerial.enableTx(false);
 
+  screen.showScreen(1);
+
 #ifndef LORA_OFF
   // Start joining...
   LMIC_startJoining();
@@ -518,6 +615,10 @@ void loop()
 #ifndef LORA_OFF
   os_runloop_once();
 #endif
+
+  // screen.loop();
+  // handleDisplay();
+  // handleButton();
 
 #ifdef FAKE_SML
   if (lastTestMillis == 0 || millis() - lastTestMillis > 1000)
@@ -555,11 +656,11 @@ void loop()
 
   // When we have more then SML_DISPLAY_TIMEOUT seconds without
   // a successful decoded SML, we update the display manually
-  if (millis() - lastSMLsuccess >= SML_DISPLAY_TIMEOUT)
-  {
-    if (millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
-    {
-      updateDisplay();
-    }
-  }
+  // if (millis() - lastSMLsuccess >= SML_DISPLAY_TIMEOUT)
+  // {
+  //   if (millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
+  //   {
+  //     screen.dirty();
+  //   }
+  // }
 }
