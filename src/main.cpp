@@ -43,8 +43,8 @@ unsigned long lastTestMillis = 0;
 
 // SCREEN Stuff
 #define SCREEN_COUNT 3
-#define DISPLAY_UPDATE_INTERVAL 0     // 0 no auto update. only if screen is "dirty"
-#define DISPLAY_TIMEOUT 1000 * 60 * 5 // time after display will go offs
+#define DISPLAY_UPDATE_INTERVAL 200   // 0 no auto update. only if screen is "dirty"
+#define DISPLAY_TIMEOUT 1000 * 60 * 1 // time after display will go offs
 #define SML_DISPLAY_TIMEOUT 5000
 #define TIME_BUTTON_LONGPRESS 10000
 
@@ -541,7 +541,34 @@ void handleDisplay()
     case 3:
       snprintf(buff1, sizeof(buff1), "Firmware v%d.%d", VERSION_MAJOR, VERSION_MINOR);
       snprintf(buff3, sizeof(buff3), " %s %s", __DATE__, __TIME__);
-      screen.displayMsg(buff1, "Compiled:", buff3, "", "(c) 2022 foorschtbar");
+      screen.displayMsg(buff1, "Compiled:", buff3, "(c) 2022 foorschtbar", "");
+      break;
+
+    // PIN/Login Screen
+    case 4:
+      byte currentPin[4];
+      int pinPos = 0;
+      screen.getCurrentPIN(currentPin, &pinPos);
+
+      char pinstr[4];
+      for (int i = 0; i < 4; i++)
+      {
+        if (i == pinPos && currentPin[i] == SCREENS_LOCKSCREEN_UNSET_VALUE)
+        {
+          pinstr[i] = '_';
+        }
+        else if (i <= pinPos && currentPin[i] != SCREENS_LOCKSCREEN_UNSET_VALUE)
+        {
+          pinstr[i] = currentPin[i] + '0';
+        }
+        else
+        {
+          pinstr[i] = '-';
+        }
+      }
+
+      snprintf(buff2, sizeof(buff2), "    PIN: %c %c %c %c", pinstr[0], pinstr[1], pinstr[2], pinstr[3]);
+      screen.displayMsg("", buff2, "", "", "");
       break;
     }
   }
@@ -599,8 +626,9 @@ void setup()
   pinMode(PIN_RX, INPUT);
   IRSerial.begin(9600, SERIAL_8N1, PIN_RX, -1, false);
 
-  // Show inital screen
-  screen.showScreen(1);
+  // Screen stuff
+  screen.setPIN(DISPLAY_PIN, 4);
+  screen.showScreen(4);
 
 #ifndef LORA_OFF
   // Start joining...

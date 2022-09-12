@@ -46,6 +46,7 @@ void Screens::loop()
 {
     if ((millis() - _lastScreenActivation) >= _screenTimeout)
     {
+        lockScreen();
         powerSave(true);
     }
     else
@@ -54,6 +55,31 @@ void Screens::loop()
         {
             _needRefresh = true;
             _lastScreenUpdate = millis();
+        }
+        if (_screenLocked && (millis() - _lastPINIncrement) >= PIN_TIMEOUT && _currentPin[0] != SCREENS_LOCKSCREEN_UNSET_VALUE)
+        {
+            if (memcmp(_currentPin, _pin, 4) == 0)
+            {
+                _screenLocked = false;
+                showScreen(1);
+            }
+            else
+            {
+                if (_currentPin[_pinPos] == SCREENS_LOCKSCREEN_UNSET_VALUE)
+                {
+                    lockScreen();
+                }
+                else
+                {
+                    _pinPos++;
+                    _lastPINIncrement = millis();
+                    if (_pinPos > 3)
+                    {
+                        lockScreen();
+                    }
+                }
+            }
+            _needRefresh = true;
         }
     }
 }
@@ -79,15 +105,33 @@ void Screens::dirty()
 
 void Screens::nextScreen()
 {
-    if (!_displayPowerSaving) // dont switch screen, if last display was in power saving mode
+
+    if (_screenLocked)
     {
-        _currentScreen += 1;
+        _currentScreen = _lockScreenNumber;
+        if (!_displayPowerSaving)
+        {
+            _currentPin[_pinPos]++;
+            if (_currentPin[_pinPos] > 9)
+            {
+                _currentPin[_pinPos] = 0;
+            }
+        }
+        _lastPINIncrement = millis();
+    }
+    else
+    {
+        if (!_displayPowerSaving) // dont switch screen, if last display was in power saving mode
+        {
+            _currentScreen += 1;
+        }
+
+        if (_currentScreen > _numofscreens || _currentScreen == 0)
+        {
+            _currentScreen = 1;
+        }
     }
 
-    if (_currentScreen > _numofscreens || _currentScreen == 0)
-    {
-        _currentScreen = 1;
-    }
     _modalMessageActive = false;
     _needRefresh = true;
     powerSave(false);
@@ -96,7 +140,13 @@ void Screens::nextScreen()
 
 void Screens::showScreen(int screenNumber)
 {
-    if (screenNumber <= _numofscreens)
+    if (screenNumber <= _numofscreens || screenNumber == _lockScreenNumber)
+    {
+        _currentScreen = screenNumber;
+        _needRefresh = true;
+        powerSave(false);
+        _lastScreenActivation = millis();
+    }
     {
         _currentScreen = screenNumber;
         _needRefresh = true;
@@ -114,6 +164,7 @@ void Screens::powerSave(bool activatePowerSave, bool force /* = false */)
         _u8g2.setPowerSave(1);
         _displayPowerSaving = true;
         _modalMessageActive = false;
+        _screenLocked = true;
     }
     else if (!activatePowerSave && (_displayPowerSaving || force)) // request to deactivate power save and display is power saving mode
     {
@@ -137,7 +188,7 @@ void Screens::displayMsg(const char *text, const char *text2 /* = "" */, const c
     // u8g2_uint_t width = _u8g2.getUTF8Width(_buff);
     // u8g2_uint_t offset = (_u8g2.getDisplayWidth() - width) / 2;
     //_u8g2.drawStr(offset, 2, _buff);     // write something to the internal memory
-    if (_modalMessageActive)
+    if (_modalMessageActive || _currentScreen == _lockScreenNumber)
     {
         _u8g2.drawStr(0, 2, _title);
     }
@@ -151,7 +202,6 @@ void Screens::displayMsg(const char *text, const char *text2 /* = "" */, const c
     _u8g2.drawStr(0, 35, text3);           // write something to the internal memory
     _u8g2.drawStr(0, 45, text4);           // write something to the internal memory
     _u8g2.drawStr(0, 55, text5);           // write something to the internal memory
-    _u8g2.drawStr(0, 55, text5);           // write something to the internal memory
     _u8g2.sendBuffer();                    // transfer internal memory to the display
 }
 
@@ -161,4 +211,24 @@ void Screens::displayMsgForce(const char *text, const char *text2 /* = "" */, co
     powerSave(false);
     _lastScreenActivation = millis();
     displayMsg(text, text2, text3, text4, text5);
+}
+
+void Screens::setPIN(const byte *pin, int pinScreenNo)
+{
+    memcpy(_pin, pin, sizeof(_pin));
+    _lockScreenNumber = pinScreenNo;
+    lockScreen();
+}
+
+void Screens::getCurrentPIN(byte *pin, int *pinPos)
+{
+    *pinPos = _pinPos;
+    memcpy(pin, _currentPin, 4);
+}
+
+void Screens::lockScreen()
+{
+    _screenLocked = true;
+    _pinPos = 0;
+    memset(_currentPin, SCREENS_LOCKSCREEN_UNSET_VALUE, 4);
 }
