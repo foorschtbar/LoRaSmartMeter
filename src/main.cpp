@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <SoftwareSerial.h>
 #include <U8g2lib.h>
 #include <lmic.h>
 #include <hal/hal.h>
@@ -55,7 +54,7 @@ unsigned long lastTestMillis = 0;
 //
 // ++++++++++++++++++++++++++++++++++++++++
 
-SoftwareSerial IRSerial;
+HardwareSerial IRSerial(1);
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/OLED_RST, /* clock=*/OLED_SCL, /* data=*/OLED_SDA);
 Screens screen(u8g2, "LoRaSmartMeter", SCREEN_COUNT, DISPLAY_UPDATE_INTERVAL, DISPLAY_TIMEOUT);
 
@@ -596,12 +595,11 @@ void setup()
   LMIC_reset();
 #endif
 
-  // Software serial setup
+  // 2nd Hardware serial setup
   pinMode(PIN_RX, INPUT);
-  IRSerial.begin(9600, SWSERIAL_8N1, PIN_RX, -1, false, 0, 95);
-  IRSerial.enableRx(true);
-  IRSerial.enableTx(false);
+  IRSerial.begin(9600, SERIAL_8N1, PIN_RX, -1, false);
 
+  // Show inital screen
   screen.showScreen(1);
 
 #ifndef LORA_OFF
