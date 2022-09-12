@@ -5,6 +5,11 @@
 #include <sml.h>
 #include <keys.h>
 #include <screens.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WebServer.h>
+#include <Update.h>
+#include <webcontent.h>
 
 #ifdef FAKE_SML
 #include <testdata.h>
@@ -45,6 +50,7 @@ unsigned long lastTestMillis = 0;
 #define SCREEN_COUNT 3
 #define DISPLAY_UPDATE_INTERVAL 200   // 0 no auto update. only if screen is "dirty"
 #define DISPLAY_TIMEOUT 1000 * 60 * 1 // time after display will go offs
+#define WIFI_TIMEOUT 1000 * 60 * 5    // time after wifi will be disabled
 #define SML_DISPLAY_TIMEOUT 5000
 #define TIME_BUTTON_LONGPRESS 10000
 
@@ -57,6 +63,7 @@ unsigned long lastTestMillis = 0;
 HardwareSerial IRSerial(1);
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/OLED_RST, /* clock=*/OLED_SCL, /* data=*/OLED_SDA);
 Screens screen(u8g2, "LoRaSmartMeter", SCREEN_COUNT, DISPLAY_UPDATE_INTERVAL, DISPLAY_TIMEOUT);
+WebServer server(80);
 
 // ++++++++++++++++++++++++++++++++++++++++
 //
@@ -75,7 +82,7 @@ const lmic_pinmap lmic_pins = {
 
 sml_states_t currentState;
 unsigned char currentChar = 0;
-unsigned long counter = 0, LoRaTransmitted = 0, LoRaReceived = 0, lastLED = 0, lmicTxPrevMillis = 0, lastSMLsuccess = 0, lastDisplayUpdate = 0, lastButtonTimer = 0;
+unsigned long counter = 0, LoRaTransmitted = 0, LoRaReceived = 0, lastLED = 0, lmicTxPrevMillis = 0, lastSMLsuccess = 0, lastDisplayUpdate = 0, lastButtonTimer = 0, lastWifiTimer = 0;
 bool previousButtonState = HIGH; // will store last Button state. 1 = unpressed, 0 = pressed
 char buffer[50];
 char statusMsg[30] = DEFAULT_STATUS_MSG;
@@ -89,6 +96,7 @@ bool lmicIsIdle = true;
 bool isDisplayUnlocked = false;
 int currentScreen = 0;
 bool displayPowerSaving = true;
+bool wifiEnabled = false;
 
 typedef struct
 {
@@ -574,6 +582,70 @@ void handleDisplay()
   }
 }
 
+void startWiFiAP()
+{
+  if (!wifiEnabled)
+  {
+    wifiEnabled = true;
+
+    screen.displayMsgForce("Starting WiFi AP", "Please wait...");
+    WiFi.softAP(WIFI_SSID, WIFI_PSK);
+
+    // Index page
+    server.on("/", HTTP_GET, []()
+              {
+              lastWifiTimer = millis();
+              server.sendHeader("Connection", "close");
+              server.send(200, "text/html", serverIndex); });
+
+    // Firmware uploading
+    server.on(
+        "/update", HTTP_POST, []()
+        {
+          lastWifiTimer = millis();
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    ESP.restart(); },
+        []()
+        {
+          HTTPUpload &upload = server.upload();
+          if (upload.status == UPLOAD_FILE_START)
+          {
+            Serial.printf("Update: %s\n", upload.filename.c_str());
+            if (!Update.begin(UPDATE_SIZE_UNKNOWN))
+            { // start with max available size
+              Update.printError(Serial);
+            }
+          }
+          else if (upload.status == UPLOAD_FILE_WRITE)
+          {
+            /* flashing firmware to ESP*/
+            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+            {
+              Update.printError(Serial);
+            }
+          }
+          else if (upload.status == UPLOAD_FILE_END)
+          {
+            if (Update.end(true))
+            { // true to set the size to the current progress
+              Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+            }
+            else
+            {
+              Update.printError(Serial);
+            }
+          }
+        });
+    server.begin();
+
+    char buffer[255];
+    snprintf(buffer, sizeof(buffer), "http://%s", WiFi.softAPIP().toString().c_str());
+    screen.displayMsgForce("WiFi AP Ready", "Connect now to", WIFI_SSID, "and open", buffer);
+    lastWifiTimer = millis();
+  }
+}
+
 void handleButton()
 {
   static bool prevBntState;
@@ -593,6 +665,7 @@ void handleButton()
     if ((millis() - lastButtonTimer >= TIME_BUTTON_LONGPRESS))
     {
       printf("[handleButton] Button pressed long\n");
+      startWiFiAP();
     }
 
     // Delay a little bit to avoid bouncing
@@ -642,8 +715,11 @@ void loop()
   os_runloop_once();
 #endif
 
+  // Display
   screen.loop();
   handleDisplay();
+
+  // Button
   handleButton();
 
 #ifdef FAKE_SML
@@ -680,13 +756,17 @@ void loop()
 #endif
   }
 
-  // When we have more then SML_DISPLAY_TIMEOUT seconds without
-  // a successful decoded SML, we update the display manually
-  // if (millis() - lastSMLsuccess >= SML_DISPLAY_TIMEOUT)
-  // {
-  //   if (millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
-  //   {
-  //     screen.dirty();
-  //   }
-  // }
+  if (wifiEnabled)
+  {
+    // WiFi AP
+    server.handleClient();
+
+    // Disable WiFi AP after x Minutes of inactivity
+    if ((millis() - lastWifiTimer) >= WIFI_TIMEOUT)
+    {
+      wifiEnabled = false;
+      WiFi.mode(WIFI_OFF);
+    }
+  }
+  
 }

@@ -17,3 +17,9 @@ static const u1_t PROGMEM APPKEY[16] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF
 
 // Display PIN
 static const byte DISPLAY_PIN[4] = {1, 2, 3, 4};
+
+// WiFi AP SSID
+const char *WIFI_SSID = "LoRaSmartMeter";
+
+// WiFi AP PSK
+const char *WIFI_PSK = "12345678";
