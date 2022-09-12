@@ -44,7 +44,7 @@ unsigned long lastTestMillis = 0;
 
 // SCREEN Stuff
 #define SCREEN_COUNT 3
-#define DISPLAY_UPDATE_INTERVAL 500
+#define DISPLAY_UPDATE_INTERVAL 0     // 0 no auto update. only if screen is "dirty"
 #define DISPLAY_TIMEOUT 1000 * 60 * 5 // time after display will go offs
 #define SML_DISPLAY_TIMEOUT 5000
 #define TIME_BUTTON_LONGPRESS 10000
@@ -528,12 +528,12 @@ void handleDisplay()
 
     case 2:
       snprintf(buff1, sizeof(buff1), "Status %14s", statusMsg);
-      // #ifdef LORA_OFF
-      //       snprintf(buff2, sizeof(buff2), "LoRa turned off!");
-      // #else
+#ifdef LORA_OFF
+      snprintf(buff2, sizeof(buff2), "LoRa turned off!");
+#else
       nextLoRaTx = (TX_INTERVAL - (millis() - lmicTxPrevMillis));
       snprintf(buff2, sizeof(buff2), "Next TX %12lus", (nextLoRaTx > 0 ? nextLoRaTx / 1000 : 0));
-      // #endif
+#endif
       snprintf(buff3, sizeof(buff3), "TX# %17i", LMIC.seqnoUp);
       snprintf(buff4, sizeof(buff4), "RX# %17i", LMIC.seqnoDn);
       screen.displayMsg(buff1, buff2, buff3, buff4, "");
@@ -616,9 +616,9 @@ void loop()
   os_runloop_once();
 #endif
 
-  // screen.loop();
-  // handleDisplay();
-  // handleButton();
+  screen.loop();
+  handleDisplay();
+  handleButton();
 
 #ifdef FAKE_SML
   if (lastTestMillis == 0 || millis() - lastTestMillis > 1000)

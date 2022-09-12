@@ -50,7 +50,7 @@ void Screens::loop()
     }
     else
     {
-        if ((millis() - _lastScreenUpdate) >= _updateInterval)
+        if (_updateInterval > 0 && (millis() - _lastScreenUpdate) >= _updateInterval)
         {
             _needRefresh = true;
             _lastScreenUpdate = millis();
