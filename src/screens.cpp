@@ -9,24 +9,15 @@ Screens::Screens(U8G2 &u8g2, const char *title, int numofscreens, unsigned long 
     _numofscreens = numofscreens;
     _screenTimeout = screenTimeout;
     _updateInterval = updateInterval;
-    sprintf(_title, "%s", title);
+    memccpy(_title, title, 0, sizeof(_title));
 }
 
 void Screens::setup()
 {
     _u8g2.begin();
-
-    // u8g2.setFont(u8g2_font_6x10_tf); // set the target font to calculate the pixel width
-    // width = u8g2.getUTF8Width(text); // calculate the pixel width of the text
-    //
-    // u8g2.setFont(u8g2_font_unifont_t_symbols); // set the target font
-    // width2 = u8g2.getUTF8Width(text2);         // calculate the pixel width of the text
-    //
     _u8g2.setFontMode(0); // enable transparent mode, which is faster
-    //
     _u8g2.setFontPosTop();
     _u8g2.setFontDirection(0);
-    //
     _u8g2.setContrast(255);
 
     reset();
@@ -184,16 +175,16 @@ void Screens::displayMsg(const char *text, const char *text2 /* = "" */, const c
 
     _u8g2.clearBuffer();                 // clear the internal memory
     _u8g2.setFont(u8g2_font_helvB08_tf); // choose a suitable font
-    snprintf(_buff, sizeof(_buff), "%-19s (%i/%i)", _title, _currentScreen, _numofscreens);
-    // u8g2_uint_t width = _u8g2.getUTF8Width(_buff);
-    // u8g2_uint_t offset = (_u8g2.getDisplayWidth() - width) / 2;
-    //_u8g2.drawStr(offset, 2, _buff);     // write something to the internal memory
+
     if (_modalMessageActive || _currentScreen == _lockScreenNumber)
     {
-        _u8g2.drawStr(0, 2, _title);
+        u8g2_uint_t width = _u8g2.getUTF8Width(_title);
+        u8g2_uint_t offset = (_u8g2.getDisplayWidth() - width) / 2;
+        _u8g2.drawStr(offset, 2, _title); // write something to the internal memory
     }
     else
     {
+        snprintf(_buff, sizeof(_buff), "%-19s (%i/%i)", _title, _currentScreen, _numofscreens);
         _u8g2.drawStr(0, 2, _buff);
     }
     _u8g2.setFont(u8g2_font_profont12_mf); // choose a suitable font
