@@ -1,6 +1,27 @@
 # LoRaSmartMeter
 
-WIP...
+This adapter reads an SML compatible electricity meter via IR interface and transmits the values via LoRaWAN to a database and a Grafana Dashboard. A LED indicates if a SML message was successfully decoded. After entering a PIN, the values can be displayed on the display and the status of the loRa transmission can be checked. If the button is pressed for more than 10 seconds, WiFi is activated and the firmware can be updated OTA. 
+
+The centerpiece is a [TTGO LoRa32 V1.0](https://s.click.aliexpress.com/e/_Dknm4wL) board. As IR reciver i use a [TCRT5000 Sensor Module](https://s.click.aliexpress.com/e/_Dk6yYZZ), where I removed the ceramic capacitor parallel to the phototransistor and replaced the resistor in the collector circuit of the phototransistor by one with 1KOhm (see [here](https://forum.iobroker.net/post/386478)).
+
+For use with my EasyMeter Q3A I have constructed a suitable housing. The case is here on [Printables.com](https://www.printables.com/model/276254-easymeter-q3a-lorawan-smartmeter).
+
+## Impressions
+### Grafana Dashboard
+
+![](.github/grafana.png)
+
+### Usage
+
+![](.github/data.gif)
+![](.github/lora.gif)
+![](.github/pin.gif)
+![](.github/wifi.gif)
+
+### Case
+
+![](.github/case1.png)
+![](.github/case2.png)
 
 ## Flags
 
@@ -74,3 +95,6 @@ function readInt(array, start, size = 8) {
 - [Volkszähler TTL Schreib- Lesekopf für Digitale Stromzähler](https://forum.iobroker.net/post/386478)
 - [BSI - Bundesamt für Sicherheit in der Informationstechnik - BSI TR-03109-1 Anlage IVb: Feinspezifikation "Drahtgebundene LMN-Schnittstelle" Teil b: "SML – Smart Message Language"](https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Publikationen/TechnischeRichtlinien/TR03109/TR-03109-1_Anlage_Feinspezifikation_Drahtgebundene_LMN-Schnittstelle_Teilb.html)
 - [SML-Interface](https://www.stefan-weigert.de/php_loader/sml.php)
+
+## Disclaimer
+The links to Shops are advertising links. I would be happy if you use this link, but of course you don't have to. I have linked exactly the offers from which I have also bought and was satisfied with the supplier and the goods. The products can of course be bought anywhere.
