@@ -305,10 +305,11 @@ void onEvent(ev_t ev)
 
       setStatusMsg("Joined");
     }
-    // Disable link check validation (automatically enabled
-    // during join, but because slow data rates change max TX
-    // size, we don't use it in this example.
+
+    // Disable link check validation
     LMIC_setLinkCheckMode(0);
+    // Disable ADR
+    LMIC_setAdrMode(0);
 
     lmicIsIdle = true;
 
@@ -768,5 +769,4 @@ void loop()
       WiFi.mode(WIFI_OFF);
     }
   }
-  
 }
