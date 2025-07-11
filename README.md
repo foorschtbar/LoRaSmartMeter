@@ -10,6 +10,22 @@ Tested with the following meters:
 
 I constructed a case, which works for both meters. The case is designed to be printed on a 3D printer and can be found on  [Printables.com](https://www.printables.com/model/276254-easymeter-q3a-lorawan-smartmeter).
 
+## Features
+
+- Read SML messages from a smart meter via IR interface
+- Parse SML messages and extract values
+  - Successful parsing is indicated by short blinking of the LED
+- Transmit last values via LoRaWAN every ~1 minute
+- Password protected access to details on TFT display
+  - Display OBIS values on a TFT display
+  - Show LoRa transmission status on TFT display
+  - Display firmware version
+  - Open WiFi AP for OTA firmware update (if button is pressed for more than 10 seconds)
+
+## Wiring
+
+![](.github/LoRaSmartMeter.drawio.png)
+
 ## Impressions
 ### Grafana Dashboard
 
